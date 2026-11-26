@@ -1,0 +1,11 @@
+entrypoint = "public/index.html"
+modules = ["python-3.11"]
+run = ["python3", "-m", "http.server", "5000", "--bind", "0.0.0.0", "--directory", "public"]
+
+[deployment]
+deploymentTarget = "static"
+publicDir = "public"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
