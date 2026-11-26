@@ -2,6 +2,12 @@
 
 Prepare, review, and save end-of-day reports. Supports static hosting with browser storage, or a local Python server with SQLite.
 
+## Generate an EOD from raw notes
+
+Paste your raw work notes and select **Generate EOD**. No profile setup or per-update fields are required. The formatter adds a professional subject, greeting, work sections, and closing, and normalizes spacing, capitalization, and punctuation. It recognizes clear completion and pending wording; ambiguous notes remain under Work Updates rather than being marked completed.
+
+This is a browser-based rule formatter, not an AI rewriting service. It preserves your supplied wording and facts. You can edit the result, optionally review individual updates, and use Settings to personalize the name, recipients, and project matching. Generate again to rebuild the report after changes; replacing edited reports asks for confirmation.
+
 ## Deploy the static site to Cloudflare Pages
 
 1. Open Cloudflare **Workers & Pages**, create a **Pages** project, and choose Git integration.

@@ -6,7 +6,7 @@ const vm = require('node:vm');
 function app(response, previous) {
   const elements = new Map();
   const element = id => {
-    if (!elements.has(id)) elements.set(id, { addEventListener() {}, textContent: '' });
+    if (!elements.has(id)) elements.set(id, { handlers: {}, addEventListener(type, callback) { this.handlers[type] = callback; }, textContent: '' });
     return elements.get(id);
   };
   const saved = new Map(previous ? [['eod-reporting-desk-public-v1', JSON.stringify(previous)]] : []);
@@ -60,4 +60,44 @@ test('database errors do not silently switch storage', async () => {
   await vm.runInContext('initialize()', fixture.context);
   assert.match(fixture.element('main').textContent, /could not be loaded/);
   assert.equal(fixture.saved.size, 0);
+});
+
+test('raw notes produce professional sections without settings or invented completion', () => {
+  const fixture = app(response(404, 'text/html'));
+  const result = vm.runInContext(`
+    reportFor('overall', parseUpdates('fixed the login issue. API testing is in progress. Discussed release options; tomorrow I will update the docs', []), defaults, '26 November 2026')
+  `, fixture.context);
+  assert.equal(result.subject, 'EOD Status Update - 26 November 2026');
+  assert.match(result.message, /^Hi Team,/);
+  assert.match(result.message, /Completed Work\n\n\u2022 Fixed the login issue\./);
+  assert.match(result.message, /Work Updates\n\n\u2022 Discussed release options\./);
+  assert.match(result.message, /In Progress \/ Next Steps/);
+  assert.doesNotMatch(result.message, /undefined|null|Projects:/);
+  assert.match(result.message, /Best regards,$/);
+});
+
+test('headings, project scopes and incomplete work preserve meaning', () => {
+  const fixture = app(response(404, 'text/html'));
+  const updates = vm.runInContext(String.raw`parseUpdates('Completed:\n- Portal: fixed login\n- testing not completed\nBlocked: waiting for access', ['Portal'])`, fixture.context);
+  assert.equal(updates[0].scope, 'project:Portal');
+  assert.equal(updates[0].status, 'completed');
+  assert.equal(updates[1].status, 'pending');
+  assert.equal(updates[2].status, 'pending');
+  assert.match(updates[2].text, /Blocked:/);
+});
+
+test('generate button consumes raw notes without requiring review or profile', async () => {
+  const fixture = app(response(404, 'text/html'));
+  await vm.runInContext('initialize()', fixture.context);
+  vm.runInContext(`
+    showUpdates = () => {}; showReport = () => {};
+    draft().raw = 'fixed the login issue. Testing is pending';
+  `, fixture.context);
+  fixture.element('generate').handlers.click();
+  const result = vm.runInContext('draft()', fixture.context);
+  assert.equal(result.raw, '');
+  assert.equal(result.updates.length, 2);
+  assert.match(result.reports.overall.message, /Hi Team,/);
+  assert.match(result.reports.overall.message, /Testing is pending\./);
+  assert.equal(result.reports.project, null);
 });

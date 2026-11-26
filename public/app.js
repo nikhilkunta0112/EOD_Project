@@ -74,62 +74,65 @@ function projectMention(line, project) {
   return new RegExp("(^|[^\\p{L}\\p{N}])" + pattern + "(?=$|[^\\p{L}\\p{N}])", "iu").test(line);
 }
 
-function parseUpdates(text, projects) {
-  const heading = /^(completed(?: work| tasks| updates)?|pending(?: tasks| work)?|upcoming tasks|next steps|in progress)$/i;
+function polishUpdate(value) {
+  let text = value.replace(/\s+/g, " ").trim();
+  text = text.replace(/^i\s+(?=(?:completed|finished|fixed|resolved|implemented|tested|reviewed|updated|created|added|submitted|worked)\b)/i, "").replace(/^i've\s+/i, "I have ");
+  if (!text) return "";
+  text = text.charAt(0).toLocaleUpperCase() + text.slice(1);
+  return /[.!?]$/.test(text) ? text : text + ".";
+}
+
+function parseUpdates(text, projects = []) {
+  const heading = /^(completed(?: work| tasks| updates)?|done|pending(?: tasks| work)?|upcoming tasks|next steps|in progress|work updates|blockers?)$/i;
   const updates = [];
   let groupStatus = "";
-  for (const rawLine of text.split(/\r?\n/)) {
-    let task = rawLine.trim().replace(/^(?:[-*•–]\s+|\d+[.)]\s+)/u, "");
+  for (const rawLine of text.split(/\r?\n|;\s*|(?<=[.!?])\s+(?=[A-Za-z])/)) {
+    let task = rawLine.trim().replace(/^(?:[-*\u2022\u2013]\s+|\d+[.)]\s+)/u, "");
     if (!task) continue;
     const label = task.replace(/:\s*$/, "").trim();
     if (heading.test(label)) {
-      groupStatus = /^completed/i.test(label) ? "completed" : "pending";
+      groupStatus = /^(completed|done)/i.test(label) ? "completed"
+        : /^(pending|upcoming|next|in progress|block)/i.test(label) ? "pending" : "update";
       continue;
     }
     let status = groupStatus;
-    const statusPrefix = task.match(/^(completed|pending|in progress|upcoming)\s*:\s*(.+)$/i);
+    const statusPrefix = task.match(/^(completed|done|pending|in progress|upcoming|blocked)\s*:\s*(.+)$/i);
     if (statusPrefix) {
-      status = /^completed$/i.test(statusPrefix[1]) ? "completed" : "pending";
-      task = statusPrefix[2];
-    } else if (/^(need to|still need to|to do|plan to|will |ongoing\b|in progress\b)/i.test(task)) {
+      status = /^(completed|done)$/i.test(statusPrefix[1]) ? "completed" : "pending";
+      if (!/^blocked$/i.test(statusPrefix[1])) task = statusPrefix[2];
+    }
+    if (/\b(not yet|not completed|not done|incomplete|pending|blocked|blocker|in progress|ongoing|tomorrow|need to|still need|to do|plan to|will|waiting|awaiting)\b/i.test(task)) {
       status = "pending";
     }
+    if (!status && /^(?:i\s+)?(?:completed|finished|fixed|resolved|implemented|delivered|deployed|tested|reviewed|updated|created|added|removed|submitted|merged)\b/i.test(task)) status = "completed";
     const prefix = task.match(/^([^:]+):\s*(.+)$/);
     const explicit = prefix && projects.find((name) => normalizeProject(name) === normalizeProject(prefix[1]));
     const general = prefix && /^(general|other)$/i.test(prefix[1].trim());
     const project = explicit || (!general && projects.find((name) => projectMention(task, name)));
     if (explicit || general) task = prefix[2];
-    updates.push({ text: task.trim(), status, scope: general ? "general" : project ? "project:" + project : "" });
+    updates.push({ text: polishUpdate(task), status: status || "update", scope: project ? "project:" + project : "general" });
   }
   return updates;
 }
 
 function reportFor(type, updates, settings, reportDay) {
   const scoped = type === "project";
-  const recipient = settings[type];
-  const visible = scoped
-    ? updates.filter((entry) => usedInProjectReport(entry, settings.projects))
-    : updates;
+  const recipient = settings[type]?.trim() || "Team";
+  const visible = scoped ? updates.filter((entry) => usedInProjectReport(entry, settings.projects)) : updates;
   if (!visible.length) return null;
   const usedProjects = settings.projects.filter((name) => visible.some((entry) => entry.scope === "project:" + name));
   const projectNames = usedProjects.join(" / ");
-  const subject = scoped
-    ? "EOD Status Update – " + projectNames + " – " + reportDay
-    : "EOD Status Update – " + reportDay;
-  const lines = [
-    "Hi " + recipient + ",", "",
-    scoped
-      ? "Please find my end-of-day status update for " + projectNames + ":"
-      : "Please find my end-of-day status update below.",
-    "", "Date: " + reportDay
-  ];
-  const includesGeneralWork = visible.some((entry) => entry.scope === "general");
-  if (!includesGeneralWork) lines.push("Project: " + projectNames);
-  const completed = visible.filter((entry) => entry.status === "completed");
-  const pending = visible.filter((entry) => entry.status === "pending");
-  if (completed.length) lines.push("", "Completed Work", "", ...completed.map((entry) => "• " + entry.text.trim()));
-  if (pending.length) lines.push("", "Upcoming Tasks", "", ...pending.map((entry) => "• " + entry.text.trim()));
-  lines.push("", "Thanks & Regards,", settings.sender);
+  const subject = "EOD Status Update - " + (scoped ? projectNames + " - " : "") + reportDay;
+  const lines = ["Hi " + recipient + ",", "",
+    scoped ? "Please find my end-of-day update for " + projectNames + " below."
+      : "Please find my end-of-day work summary below.", "", "Date: " + reportDay];
+  if (projectNames) lines.push("Projects: " + projectNames);
+  for (const [status, title] of [["completed", "Completed Work"], ["update", "Work Updates"], ["pending", "In Progress / Next Steps"]]) {
+    const entries = visible.filter((entry) => (entry.status || "update") === status);
+    if (entries.length) lines.push("", title, "", ...entries.map((entry) => "\u2022 " + polishUpdate(entry.text)));
+  }
+  lines.push("", "Best regards,");
+  if (settings.sender?.trim()) lines.push(settings.sender.trim());
   return { recipient, subject, message: lines.join("\n") };
 }
 
@@ -224,7 +227,7 @@ function refreshActions() {
   refreshSummary(current.updates, total - missing);
   const countLabel = total + (total === 1 ? " update" : " updates");
   $("update-count").textContent = missing ? countLabel + " · " + missing + " to review" : countLabel;
-  $("generate").disabled = !state.settings.sender || !total || Boolean(missing || current.raw.trim());
+  $("generate").disabled = !current.raw.trim() && (!total || Boolean(missing));
   $("review").disabled = !current.raw.trim();
   $("stale").hidden = !isStale();
   $("save").disabled = !current.reports || isStale() || !current.reports.overall.subject.trim() || !current.reports.overall.message.trim() ||
@@ -236,7 +239,7 @@ function refreshActions() {
 function showReport() {
   const reports = draft().reports;
   const report = reports?.[active];
-  $("recipient").textContent = report?.recipient || state.settings[active] || "Set in Settings";
+  $("recipient").textContent = report?.recipient || state.settings[active] || "Team";
   $("report-editor").hidden = !report;
   $("report-empty").hidden = Boolean(report);
   $("report-empty").querySelector("h3").textContent = reports && !report
@@ -320,7 +323,7 @@ function reportHtml(report) {
   container.append(subject);
   let list;
   for (const line of report.message.split("\n")) {
-    if (line.startsWith("• ")) {
+    if (line.startsWith("\u2022 ")) {
       if (!list) {
         list = document.createElement("ul");
         container.append(list);
@@ -333,7 +336,7 @@ function reportHtml(report) {
     list = null;
     if (!line.trim()) continue;
     const paragraph = document.createElement("p");
-    if (/^(Project:|Completed Work$|Upcoming Tasks$)/.test(line)) {
+    if (/^(Projects?:|Completed Work$|Work Updates$|In Progress \/ Next Steps$)/.test(line)) {
       const strong = document.createElement("strong");
       strong.textContent = line;
       paragraph.append(strong);
@@ -387,6 +390,17 @@ $("review").addEventListener("click", () => {
 $("generate").addEventListener("click", () => {
   const current = draft();
   if (current.edited && !confirm("Replace your edited drafts with newly generated reports?")) return;
+  if (current.raw.trim()) {
+    const parsed = parseUpdates(current.raw, state.settings.projects);
+    if (!parsed.length) {
+      notify("Paste at least one work update to generate your EOD.");
+      return;
+    }
+    current.updates.push(...parsed);
+    current.raw = "";
+    $("raw").value = "";
+    showUpdates();
+  }
   current.reports = {
     overall: reportFor("overall", current.updates, state.settings, displayDate(date)),
     project: reportFor("project", current.updates, state.settings, displayDate(date))
@@ -485,7 +499,7 @@ $("settings-form").addEventListener("submit", async (event) => {
   const form = event.currentTarget;
   const values = Object.fromEntries(new FormData(form));
   for (const [key, value] of Object.entries(values)) {
-    if (!value.trim()) {
+    if (!value.trim() && key === "zone") {
       const field = form.elements.namedItem(key);
       field.setCustomValidity("Enter a value.");
       field.reportValidity();
@@ -495,11 +509,6 @@ $("settings-form").addEventListener("submit", async (event) => {
   }
   const projects = values.projects.split(",").map((name) => name.trim()).filter(Boolean);
   const uniqueProjects = [...new Map(projects.filter(normalizeProject).map((name) => [normalizeProject(name), name])).values()];
-  if (!uniqueProjects.length) {
-    form.elements.projects.setCustomValidity("Enter at least one project name.");
-    form.elements.projects.reportValidity();
-    return;
-  }
   state.settings = { ...values, projects: uniqueProjects };
   const stored = await persist();
   $("settings-dialog").close();
@@ -557,7 +566,6 @@ async function initialize() {
     showProfile();
     showDay(date);
     showHistory();
-    if (!state.settings.sender) openSettings();
     if (storageIssue) notify("Previous browser data could not be read.");
     setInterval(() => {
       const { minimum, today } = pruneStoredDays();

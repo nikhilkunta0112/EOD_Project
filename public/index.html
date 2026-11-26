@@ -42,7 +42,7 @@
   <main>
     <section id="compose">
       <header class="page-heading">
-        <div><h1>Daily EOD report</h1><p>Prepare, review, and save your end-of-day updates.</p></div>
+        <div><h1>Daily EOD report</h1><p>Paste your raw notes and generate a professional EOD in one click.</p></div>
         <label class="date-field"><span>Report date</span><input id="report-date" type="date" required></label>
       </header>
       <div class="summary" role="group" aria-label="Work summary for the selected date">
@@ -64,16 +64,16 @@
       </div>
       <div class="desk">
         <section class="card updates" aria-labelledby="updates-title">
-          <header class="card-heading"><span class="card-icon"><svg aria-hidden="true" focusable="false"><use href="#edit"/></svg></span><div><h2 id="updates-title">Work updates</h2><p>Add each update once and mark its status and scope.</p></div></header>
+          <header class="card-heading"><span class="card-icon"><svg aria-hidden="true" focusable="false"><use href="#edit"/></svg></span><div><h2 id="updates-title">Work updates</h2><p>Paste your work notes. We will organize them into a ready-to-edit EOD.</p></div></header>
           <div class="card-body">
             <div class="input-heading"><label class="input-label" for="raw">Raw updates</label><button class="text-btn" id="tips-toggle" aria-expanded="false" aria-controls="tips">Formatting tips</button></div>
-            <textarea id="raw" rows="6" placeholder="Paste or type one update per line."></textarea>
-            <div class="input-foot"><button class="btn secondary" id="review"><svg aria-hidden="true" focusable="false"><use href="#add"/></svg>Add updates</button></div>
-            <p class="tips" id="tips" hidden>Use â€œCompletedâ€ or â€œPendingâ€ on its own line to label the updates below it. Start an update with a configured project name followed by a colon to set its scope. You can review every label before generating.</p>
+            <textarea id="raw" rows="6" placeholder="Example: Fixed the login issue. Reviewed the dashboard changes. API testing is in progress. Tomorrow I will update the documentation."></textarea>
+            <div class="input-foot"><button class="btn secondary" id="review"><svg aria-hidden="true" focusable="false"><use href="#add"/></svg>Review updates (optional)</button></div>
+            <p class="tips" id="tips" hidden>Paste sentences, bullet points, or one update per line. Completed work and next steps are grouped automatically when clear; other notes stay under Work Updates. Settings and manual review are optional. You can edit the generated EOD before copying.</p>
             <div id="update-list" class="update-list"></div>
-            <div class="empty-list" id="empty-list"><span class="mini-icon"><svg aria-hidden="true" focusable="false"><use href="#check"/></svg></span><span>Your updates will appear here for review.</span></div>
+            <div class="empty-list" id="empty-list"><span class="mini-icon"><svg aria-hidden="true" focusable="false"><use href="#check"/></svg></span><span>Paste your notes above, then select Generate EOD.</span></div>
           </div>
-          <footer class="card-foot"><span id="update-count">0 updates</span><button class="btn primary" id="generate" disabled><svg aria-hidden="true" focusable="false"><use href="#brand"/></svg>Generate reports</button></footer>
+          <footer class="card-foot"><span id="update-count">0 updates</span><button class="btn primary" id="generate" disabled><svg aria-hidden="true" focusable="false"><use href="#brand"/></svg>Generate EOD</button></footer>
         </section>
         <section class="card output" aria-labelledby="reports-title">
           <header class="card-heading"><span class="card-icon"><svg aria-hidden="true" focusable="false"><use href="#brand"/></svg></span><div><h2 id="reports-title">Report drafts</h2><p>Edit the subject and message before copying.</p></div></header>
@@ -82,7 +82,7 @@
             <button role="tab" id="project-tab" aria-selected="false" aria-controls="report-panel" tabindex="-1">Project EOD</button>
           </div>
           <div class="report-body" id="report-panel" role="tabpanel" aria-labelledby="overall-tab">
-            <div class="to-line"><span>To</span><strong id="recipient">Set in Settings</strong></div>
+            <div class="to-line"><span>To</span><strong id="recipient">Team</strong></div>
             <div id="report-empty" class="report-empty"><div class="empty-art"><svg aria-hidden="true" focusable="false"><use href="#brand"/></svg></div><h3>Your draft will appear here</h3><p>Add your updates to generate this report.</p></div>
             <div id="report-editor" hidden>
               <label class="input-label" for="subject">Subject</label><input id="subject" type="text">
@@ -105,17 +105,17 @@
 <p id="notice" class="notice" role="status" hidden></p>
 <dialog id="settings-dialog" aria-labelledby="settings-title">
   <form id="settings-form">
-    <header class="dialog-heading"><div><h2 id="settings-title">Settings</h2><p>Set up the reports for your own workflow.</p></div><button type="button" class="icon-btn" id="settings-close" aria-label="Close settings"><svg aria-hidden="true" focusable="false"><use href="#close"/></svg></button></header>
+    <header class="dialog-heading"><div><h2 id="settings-title">Settings</h2><p>Optional details to personalize your reports.</p></div><button type="button" class="icon-btn" id="settings-close" aria-label="Close settings"><svg aria-hidden="true" focusable="false"><use href="#close"/></svg></button></header>
     <div class="form-grid">
-      <label>Your name<input name="sender" required maxlength="100"></label>
+      <label>Your name<input name="sender" maxlength="100"></label>
       <label>Report date uses<select name="zone"><option value="Asia/Kolkata">India time</option><option value="local">Browser time zone</option></select></label>
-      <label>Overall report recipient<input name="overall" required maxlength="100"></label>
-      <label>Project report recipient<input name="project" required maxlength="100"></label>
-      <label class="wide">Project names<input name="projects" required maxlength="250" aria-describedby="project-help"><small id="project-help">Separate names with commas. All listed projects go into the project report.</small></label>
+      <label>Overall report recipient<input name="overall" maxlength="100"></label>
+      <label>Project report recipient<input name="project" maxlength="100"></label>
+      <label class="wide">Project names<input name="projects" maxlength="250" aria-describedby="project-help"><small id="project-help">Separate names with commas. All listed projects go into the project report.</small></label>
     </div>
     <div class="dialog-actions"><button type="button" class="btn secondary" id="settings-cancel">Cancel</button><button class="btn primary" type="submit">Save settings</button></div>
   </form>
 </dialog>
-<template id="update-template"><div class="update"><textarea class="task" rows="2" aria-label="Work update"></textarea><div class="row-options"><label><span>Status</span><select class="status"><option value="">Choose status</option><option value="completed">Completed</option><option value="pending">Pending / ongoing</option></select></label><label><span>Scope</span><select class="scope"></select></label><button type="button" class="icon-btn remove" aria-label="Remove update"><svg aria-hidden="true" focusable="false"><use href="#close"/></svg></button></div></div></template>
+<template id="update-template"><div class="update"><textarea class="task" rows="2" aria-label="Work update"></textarea><div class="row-options"><label><span>Status</span><select class="status"><option value="">Choose status</option><option value="update">Work update</option><option value="completed">Completed</option><option value="pending">Pending / ongoing</option></select></label><label><span>Scope</span><select class="scope"></select></label><button type="button" class="icon-btn remove" aria-label="Remove update"><svg aria-hidden="true" focusable="false"><use href="#close"/></svg></button></div></div></template>
 </body>
 </html>
