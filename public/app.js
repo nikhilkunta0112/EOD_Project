@@ -8,9 +8,20 @@ let date;
 let active = "overall";
 let noticeTimer;
 let writes = Promise.resolve();
+let storageMode = "browser";
 
 function persist() {
+  pruneStoredDays();
   const payload = JSON.stringify(state);
+  if (storageMode === "browser") {
+    try {
+      localStorage.setItem(storageKey, payload);
+      return Promise.resolve(true);
+    } catch {
+      notify("This browser could not save your changes. Copy your report before leaving.");
+      return Promise.resolve(false);
+    }
+  }
   writes = writes.then(async () => {
     try {
       const response = await fetch("/api/state", {
@@ -498,16 +509,39 @@ $("settings-form").addEventListener("submit", async (event) => {
   if (stored) notify("Settings saved.");
 });
 
+function pruneStoredDays() {
+  const today = reportDate();
+  const earliest = new Date(today + "T00:00:00Z");
+  earliest.setUTCDate(earliest.getUTCDate() - 2);
+  const minimum = earliest.toISOString().slice(0, 10);
+  for (const collection of [state.drafts, state.history]) {
+    for (const key of Object.keys(collection)) {
+      if (key < minimum || key > today) delete collection[key];
+    }
+  }
+  $("report-date").min = minimum;
+  $("report-date").max = today;
+  return { minimum, today };
+}
+
 async function initialize() {
   try {
+    let stored;
     const response = await fetch("/api/state");
-    if (!response.ok) throw new Error("Load failed");
-    const stored = await response.json();
+    if (response.ok && response.headers.get("Content-Type")?.includes("application/json")) {
+      stored = await response.json();
+      storageMode = "sqlite";
+    } else if (response.status === 404 || (response.ok && response.headers.get("Content-Type")?.includes("text/html"))) {
+      try { stored = JSON.parse(localStorage.getItem(storageKey)); }
+      catch { storageIssue = true; }
+    } else {
+      throw new Error("Storage service failed");
+    }
     state = {
-      settings: { ...defaults, ...stored.settings },
-      drafts: stored.drafts ?? {}, history: stored.history ?? {}
+      settings: { ...defaults, ...stored?.settings },
+      drafts: stored?.drafts ?? {}, history: stored?.history ?? {}
     };
-    if (!stored.settings) {
+    if (storageMode === "sqlite" && !stored?.settings) {
       try {
         const legacy = JSON.parse(localStorage.getItem(storageKey));
         if (legacy) {
@@ -517,21 +551,22 @@ async function initialize() {
       } catch { storageIssue = true; }
     }
     date = reportDate();
-    const earliest = new Date(date + "T00:00:00Z");
-    earliest.setUTCDate(earliest.getUTCDate() - 2);
-    const minimum = earliest.toISOString().slice(0, 10);
-    for (const collection of [state.drafts, state.history]) {
-      for (const key of Object.keys(collection)) if (key < minimum || key > date) delete collection[key];
-    }
-    $("report-date").min = minimum;
-    $("report-date").max = date;
+    pruneStoredDays();
+    await persist();
+    $("storage-label").textContent = storageMode === "sqlite" ? "SQLite - 3 days" : "This browser - 3 days";
     showProfile();
     showDay(date);
     showHistory();
     if (!state.settings.sender) openSettings();
     if (storageIssue) notify("Previous browser data could not be read.");
+    setInterval(() => {
+      const { minimum, today } = pruneStoredDays();
+      if (date < minimum || date > today) showDay(today);
+      persist();
+      showHistory();
+    }, 60000);
   } catch {
-    document.querySelector("main").textContent = "SQLite storage is unavailable. Start the app with python server.py, then reload this page.";
+    document.querySelector("main").textContent = "Storage could not be loaded. Please reload this page, or restart python server.py if using local SQLite.";
   }
 }
 initialize();
