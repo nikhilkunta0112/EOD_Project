@@ -1,25 +1,27 @@
 ﻿# EOD Reporting Desk
 
-A static app for preparing, reviewing, and saving end-of-day reports.
+Prepare, review, and save end-of-day reports using a local SQLite database.
 
 ## Run locally
 
-From the project directory, run:
+Install Python 3.9 or newer, then run from the project directory:
 
 ```sh
-python -m http.server 5000 --bind 127.0.0.1 --directory public
+python server.py
 ```
 
-Open http://localhost:5000 in your browser.
+Open http://localhost:5000. To use a different port, run `python server.py --port 8000`.
+No extra Python packages are required. Stop the server with Ctrl+C.
 
-## Deploy to Cloudflare Pages
+## Storage and retention
 
-1. In Cloudflare, open Workers & Pages and create a Pages project using Git integration.
-2. Connect GitHub and select `nikhilkunta0112/EOD_Project`.
-3. Select the `main` production branch.
-4. Use framework preset **None**, leave the build command blank, and set the build output directory to `public`.
-5. Save and deploy. Cloudflare provides a `pages.dev` URL and deploys future pushes automatically.
+The database is created automatically at `data/eod.sqlite3` and excluded from Git.
+Drafts and saved report history are kept for **today and the previous two calendar days**, using the time zone selected in Settings. Older records are automatically deleted on reads, writes, and during the server's periodic cleanup. Profile settings remain saved.
 
-The app uses static HTML, CSS, and JavaScript. No environment variables, database, or package installation are required.
+Existing browser data is imported on the first visit if the database has no settings. Only records within the three-day window are retained. Keep using the same browser URL for the import to find your previous data.
 
-Each user sets their name, recipients, projects, and time zone in Settings. Reports and history are stored in their browser for the published URL. Saved reports from a different hostname will still be on the old hostname.
+The server listens only on this computer. All browser sessions using this server share one local profile and database. SQLite writes are queued by the browser, and failed saves show a notification.
+
+## Hosting
+
+SQLite storage requires the Python server and a persistent writable disk. Static-only hosting, including Cloudflare Pages, cannot run this version's storage API. For local use, always start the app with `python server.py`.

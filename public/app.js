@@ -3,33 +3,27 @@
 const storageKey = "eod-reporting-desk-public-v1";
 const $ = (id) => document.getElementById(id);
 let storageIssue = false;
-let state = restore();
-let date = reportDate();
+let state;
+let date;
 let active = "overall";
 let noticeTimer;
-
-function restore() {
-  try {
-    const stored = JSON.parse(localStorage.getItem(storageKey));
-    return {
-      settings: { ...defaults, ...stored?.settings },
-      drafts: stored?.drafts ?? {},
-      history: stored?.history ?? {}
-    };
-  } catch {
-    storageIssue = true;
-    return { settings: { ...defaults }, drafts: {}, history: {} };
-  }
-}
+let writes = Promise.resolve();
 
 function persist() {
-  try {
-    localStorage.setItem(storageKey, JSON.stringify(state));
-    return true;
-  } catch {
-    notify("This browser could not store your changes. Copy your report before leaving.");
-    return false;
-  }
+  const payload = JSON.stringify(state);
+  writes = writes.then(async () => {
+    try {
+      const response = await fetch("/api/state", {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: payload
+      });
+      if (!response.ok) throw new Error("Save failed");
+      return true;
+    } catch {
+      notify("Could not save to SQLite. Keep this page open and try again.");
+      return false;
+    }
+  });
+  return writes;
 }
 
 function notify(message) {
@@ -428,9 +422,9 @@ $("copy").addEventListener("click", async () => {
   notify("Report copied.");
 });
 
-$("save").addEventListener("click", () => {
+$("save").addEventListener("click", async () => {
   state.history[date] = { draft: structuredClone(draft()) };
-  if (persist()) notify("Saved to report history.");
+  if (await persist()) notify("Saved to report history.");
   showHistory();
 });
 
@@ -475,7 +469,7 @@ for (const id of ["settings-close", "settings-cancel"]) {
   $(id).addEventListener("click", () => $("settings-dialog").close());
 }
 $("settings-form").addEventListener("input", (event) => event.target.setCustomValidity(""));
-$("settings-form").addEventListener("submit", (event) => {
+$("settings-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
   const values = Object.fromEntries(new FormData(form));
@@ -496,7 +490,7 @@ $("settings-form").addEventListener("submit", (event) => {
     return;
   }
   state.settings = { ...values, projects: uniqueProjects };
-  const stored = persist();
+  const stored = await persist();
   $("settings-dialog").close();
   showProfile();
   showUpdates();
@@ -504,8 +498,40 @@ $("settings-form").addEventListener("submit", (event) => {
   if (stored) notify("Settings saved.");
 });
 
-showProfile();
-showDay(date);
-showHistory();
-if (!state.settings.sender) openSettings();
-if (storageIssue) notify("Stored reports could not be read in this browser.");
+async function initialize() {
+  try {
+    const response = await fetch("/api/state");
+    if (!response.ok) throw new Error("Load failed");
+    const stored = await response.json();
+    state = {
+      settings: { ...defaults, ...stored.settings },
+      drafts: stored.drafts ?? {}, history: stored.history ?? {}
+    };
+    if (!stored.settings) {
+      try {
+        const legacy = JSON.parse(localStorage.getItem(storageKey));
+        if (legacy) {
+          state = { settings: { ...defaults, ...legacy.settings }, drafts: legacy.drafts ?? {}, history: legacy.history ?? {} };
+          if (await persist()) localStorage.removeItem(storageKey);
+        }
+      } catch { storageIssue = true; }
+    }
+    date = reportDate();
+    const earliest = new Date(date + "T00:00:00Z");
+    earliest.setUTCDate(earliest.getUTCDate() - 2);
+    const minimum = earliest.toISOString().slice(0, 10);
+    for (const collection of [state.drafts, state.history]) {
+      for (const key of Object.keys(collection)) if (key < minimum || key > date) delete collection[key];
+    }
+    $("report-date").min = minimum;
+    $("report-date").max = date;
+    showProfile();
+    showDay(date);
+    showHistory();
+    if (!state.settings.sender) openSettings();
+    if (storageIssue) notify("Previous browser data could not be read.");
+  } catch {
+    document.querySelector("main").textContent = "SQLite storage is unavailable. Start the app with python server.py, then reload this page.";
+  }
+}
+initialize();
