@@ -116,6 +116,32 @@ function parseUpdates(text, projects = []) {
   return updates;
 }
 
+function templateValues(updates, settings, recipient, reportDay, projects) {
+  const bullets = status => updates.filter(entry => (entry.status || "update") === status)
+    .map(entry => "\u2022 " + polishUpdate(entry.text)).join("\n");
+  const completed = bullets("completed"), pending = bullets("pending"), work_updates = bullets("update");
+  const updatesText = [["Completed Work", completed], ["Work Updates", work_updates], ["In Progress / Next Steps", pending]]
+    .filter(([, content]) => content).map(([heading, content]) => heading + "\n\n" + content).join("\n\n");
+  return { date: reportDay, sender: settings.sender || "", recipient, projects,
+    completed, pending, work_updates, updates: updatesText };
+}
+
+function renderTemplate(text, values) {
+  return text.replace(/{{\s*([a-z_]+)\s*}}/g, (token, key) => Object.hasOwn(values, key) ? values[key] : token).trim();
+}
+
+function templateError(template) {
+  const known = ["date", "sender", "recipient", "projects", "completed", "pending", "work_updates", "updates"];
+  if (!template.subject.trim() || !template.body.trim()) return "Enter both a subject and message template.";
+  const tokens = [...(template.subject + "\n" + template.body).matchAll(/{{(.*?)}}/g)].map(match => match[1].trim());
+  if (tokens.some(key => !known.includes(key))) return "Use only the placeholders listed below.";
+  const bodyTokens = [...template.body.matchAll(/{{\s*([a-z_]+)\s*}}/g)].map(match => match[1]);
+  if (!bodyTokens.includes("updates") && !["completed", "pending", "work_updates"].every(key => bodyTokens.includes(key))) {
+    return "Include {{updates}}, or all three of {{completed}}, {{pending}} and {{work_updates}}, so no work is omitted.";
+  }
+  return "";
+}
+
 function reportFor(type, updates, settings, reportDay) {
   const scoped = type === "project";
   const recipient = settings[type]?.trim() || "Team";
@@ -123,6 +149,11 @@ function reportFor(type, updates, settings, reportDay) {
   if (!visible.length) return null;
   const usedProjects = settings.projects.filter((name) => visible.some((entry) => entry.scope === "project:" + name));
   const projectNames = usedProjects.join(" / ");
+  const custom = settings.templates?.[type];
+  if (custom && !templateError(custom)) {
+    const values = templateValues(visible, settings, recipient, reportDay, projectNames);
+    return { recipient, subject: renderTemplate(custom.subject, values), message: renderTemplate(custom.body, values) };
+  }
   const subject = "EOD Status Update - " + (scoped ? projectNames + " - " : "") + reportDay;
   const lines = ["Hi " + recipient + ",", "",
     scoped ? "Please find my end-of-day update for " + projectNames + " below."
@@ -235,6 +266,7 @@ function refreshActions() {
   $("save").disabled = generating || !current.reports || isStale() || !current.reports.overall.subject.trim() || !current.reports.overall.message.trim() ||
     Boolean(current.reports.project && (!current.reports.project.subject.trim() || !current.reports.project.message.trim()));
   const report = current.reports?.[active];
+  $("clear-report").disabled = !report || (!report.subject && !report.message);
   $("copy").disabled = !report?.subject.trim() || !report?.message.trim();
 }
 
@@ -411,6 +443,7 @@ $("generate").addEventListener("click", async () => {
   const sourceSignature = reportSignature();
   const sourceDate = date;
   const previousReports = JSON.stringify(current.reports);
+  const useTemplates = Boolean(state.settings.templates);
   generating = true;
   refreshActions();
   persist();
@@ -422,10 +455,19 @@ $("generate").addEventListener("click", async () => {
   try {
     const response = await fetch("/api/reformat", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reports }), signal: controller.signal
+      body: JSON.stringify({ reports, ...(useTemplates ? { updates: current.updates } : {}) }), signal: controller.signal
     });
     if (!response.ok || !response.headers.get("Content-Type")?.includes("application/json")) throw new Error("AI unavailable");
     const result = await response.json();
+    if (useTemplates) {
+      if (!Array.isArray(result.updates) || result.updates.length !== current.updates.length ||
+          result.updates.some(text => typeof text !== "string" || !text.trim())) throw new Error("Invalid AI updates");
+      const polished = current.updates.map((entry, index) => ({ ...entry, text: result.updates[index] }));
+      result.reports = {
+        overall: reportFor("overall", polished, state.settings, displayDate(sourceDate)),
+        project: reportFor("project", polished, state.settings, displayDate(sourceDate))
+      };
+    }
     const valid = report => report && typeof report.subject === "string" && report.subject.trim() && typeof report.message === "string" && report.message.trim();
     if (!valid(result.reports?.overall) || (reports.project && !valid(result.reports?.project))) throw new Error("Invalid AI output");
     rewritten = result.reports;
@@ -483,6 +525,57 @@ $("copy").addEventListener("click", async () => {
     }
   }
   notify("Report copied.");
+});
+
+$("clear-report").addEventListener("click", async () => {
+  const report = draft().reports?.[active];
+  if (!report) return;
+  report.subject = "";
+  report.message = "";
+  draft().edited = true;
+  await persist();
+  showReport();
+  $("ai-status").textContent = "Draft cleared. Your work updates and saved history are unchanged.";
+  notify((active === "overall" ? "Overall" : "Project") + " draft cleared.");
+});
+
+function openTemplates() {
+  for (const type of ["overall", "project"]) {
+    const template = state.settings.templates?.[type] || defaultTemplates[type];
+    $(type + "-template-subject").value = template.subject;
+    $(type + "-template-body").value = template.body;
+  }
+  $("template-error").textContent = "";
+  $("templates-dialog").showModal();
+}
+$("templates-open").addEventListener("click", openTemplates);
+for (const id of ["templates-close", "templates-cancel"]) {
+  $(id).addEventListener("click", () => $("templates-dialog").close());
+}
+for (const type of ["overall", "project"]) {
+  $(type + "-template-reset").addEventListener("click", () => {
+    $(type + "-template-subject").value = defaultTemplates[type].subject;
+    $(type + "-template-body").value = defaultTemplates[type].body;
+    $("template-error").textContent = "Default loaded. Save templates to apply.";
+  });
+}
+$("templates-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const templates = {};
+  for (const type of ["overall", "project"]) {
+    templates[type] = { subject: $(type + "-template-subject").value.trim(), body: $(type + "-template-body").value.trim() };
+    const error = templateError(templates[type]);
+    if (error) {
+      $("template-error").textContent = (type === "overall" ? "Overall EOD: " : "Project EOD: ") + error;
+      return;
+    }
+  }
+  state.settings.templates = templates;
+  if (await persist()) {
+    $("templates-dialog").close();
+    showReport();
+    notify("Templates saved. Generate again to apply them to your report.");
+  } else $("template-error").textContent = "Templates could not be saved. Please try again.";
 });
 
 $("save").addEventListener("click", async () => {
@@ -547,7 +640,7 @@ $("settings-form").addEventListener("submit", async (event) => {
   }
   const projects = values.projects.split(",").map((name) => name.trim()).filter(Boolean);
   const uniqueProjects = [...new Map(projects.filter(normalizeProject).map((name) => [normalizeProject(name), name])).values()];
-  state.settings = { ...values, projects: uniqueProjects };
+  state.settings = { ...state.settings, ...values, projects: uniqueProjects };
   const stored = await persist();
   $("settings-dialog").close();
   showProfile();

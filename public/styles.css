@@ -278,3 +278,14 @@ dialog::backdrop { background: #080609cb; }
 @media (prefers-reduced-motion: reduce) {
   .btn, .icon-btn, .metric-track span { transition: none; }
 }
+#templates-dialog { width: min(720px, calc(100% - 30px)); }
+.template-help { color: var(--muted); font-size: .9rem; line-height: 1.65; }
+.template-help code { color: #ffc3c6; overflow-wrap: anywhere; }
+.template-section { min-width: 0; margin: 20px 0; padding: 16px; border: 1px solid var(--line); border-radius: 10px; }
+.template-section legend { padding: 0 7px; font-weight: 700; }
+.template-section .input-label { display: block; margin: 8px 0; }
+.template-section textarea { margin-bottom: 10px; }
+#template-error { color: #ffd28e; font-size: .9rem; line-height: 1.5; }
+.output .card-heading { flex-wrap: wrap; }
+#templates-open { margin-left: auto; }
+.report-actions { flex-wrap: wrap; }

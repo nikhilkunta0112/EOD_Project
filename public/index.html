@@ -76,7 +76,7 @@
           <footer class="card-foot"><span id="update-count">0 updates</span><button class="btn primary" id="generate" disabled><svg aria-hidden="true" focusable="false"><use href="#brand"/></svg>Generate EOD</button></footer>
         </section>
         <section class="card output" aria-labelledby="reports-title">
-          <header class="card-heading"><span class="card-icon"><svg aria-hidden="true" focusable="false"><use href="#brand"/></svg></span><div><h2 id="reports-title">Report drafts</h2><p>Edit the subject and message before copying.</p></div></header>
+          <header class="card-heading"><span class="card-icon"><svg aria-hidden="true" focusable="false"><use href="#brand"/></svg></span><div><h2 id="reports-title">Report drafts</h2><p>Edit the subject and message before copying.</p></div><button class="btn secondary" id="templates-open">Templates</button></header>
           <div class="tabs" role="tablist" aria-label="Report type">
             <button role="tab" id="overall-tab" aria-selected="true" aria-controls="report-panel">Overall EOD</button>
             <button role="tab" id="project-tab" aria-selected="false" aria-controls="report-panel" tabindex="-1">Project EOD</button>
@@ -91,7 +91,7 @@
             <p id="ai-status" class="tips" role="status">AI rewriting is used when available; basic formatting remains available as a fallback.</p>
             <p id="stale" class="stale" hidden>Source updates or settings changed. Generate again to refresh the drafts.</p>
           </div>
-          <footer class="card-foot report-actions"><button class="btn secondary" id="copy" disabled><svg aria-hidden="true" focusable="false"><use href="#copy-icon"/></svg>Copy report</button><button class="btn save" id="save" disabled><svg aria-hidden="true" focusable="false"><use href="#save-icon"/></svg>Save to history</button></footer>
+          <footer class="card-foot report-actions"><button class="btn secondary" id="clear-report" disabled>Clear draft</button><button class="btn secondary" id="copy" disabled><svg aria-hidden="true" focusable="false"><use href="#copy-icon"/></svg>Copy report</button><button class="btn save" id="save" disabled><svg aria-hidden="true" focusable="false"><use href="#save-icon"/></svg>Save to history</button></footer>
         </section>
       </div>
       <p class="bottom-note">Generate sends your work notes to Cloudflare Workers AI for professional rewriting. Review the result before sending.</p>
@@ -115,6 +115,24 @@
       <label class="wide">Project names<input name="projects" maxlength="250" aria-describedby="project-help"><small id="project-help">Separate names with commas. All listed projects go into the project report.</small></label>
     </div>
     <div class="dialog-actions"><button type="button" class="btn secondary" id="settings-cancel">Cancel</button><button class="btn primary" type="submit">Save settings</button></div>
+  </form>
+</dialog>
+<dialog id="templates-dialog" aria-labelledby="templates-title">
+  <form id="templates-form">
+    <header class="dialog-heading"><div><h2 id="templates-title">Report templates</h2><p>Create a reusable format for each EOD. Changes apply when you generate again.</p></div><button type="button" class="icon-btn" id="templates-close" aria-label="Close templates">X</button></header>
+    <p class="template-help">Use <code>{{date}}</code>, <code>{{recipient}}</code>, <code>{{sender}}</code>, and <code>{{projects}}</code> for details. Add <code>{{updates}}</code> for all work grouped by status, or use all three of <code>{{completed}}</code>, <code>{{work_updates}}</code>, and <code>{{pending}}</code> under your own headings.</p>
+    <fieldset class="template-section"><legend>Overall EOD</legend>
+      <label class="input-label" for="overall-template-subject">Subject template</label><input id="overall-template-subject" maxlength="300" required>
+      <label class="input-label" for="overall-template-body">Message template</label><textarea id="overall-template-body" rows="9" maxlength="5000" required></textarea>
+      <button type="button" class="text-btn" id="overall-template-reset">Use default Overall EOD template</button>
+    </fieldset>
+    <fieldset class="template-section"><legend>Project EOD</legend>
+      <label class="input-label" for="project-template-subject">Subject template</label><input id="project-template-subject" maxlength="300" required>
+      <label class="input-label" for="project-template-body">Message template</label><textarea id="project-template-body" rows="9" maxlength="5000" required></textarea>
+      <button type="button" class="text-btn" id="project-template-reset">Use default Project EOD template</button>
+    </fieldset>
+    <p id="template-error" role="status"></p>
+    <div class="dialog-actions"><button type="button" class="btn secondary" id="templates-cancel">Cancel</button><button type="submit" class="btn primary">Save templates</button></div>
   </form>
 </dialog>
 <template id="update-template"><div class="update"><textarea class="task" rows="2" aria-label="Work update"></textarea><div class="row-options"><label><span>Status</span><select class="status"><option value="">Choose status</option><option value="update">Work update</option><option value="completed">Completed</option><option value="pending">Pending / ongoing</option></select></label><label><span>Scope</span><select class="scope"></select></label><button type="button" class="icon-btn remove" aria-label="Remove update"><svg aria-hidden="true" focusable="false"><use href="#close"/></svg></button></div></div></template>

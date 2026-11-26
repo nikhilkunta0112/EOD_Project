@@ -52,3 +52,22 @@ test('both report variants are preserved', async () => {
   assert.equal(result.status, 200);
   assert.equal((await result.json()).reports.project.recipient, 'Lead');
 });
+
+test('custom-template mode rewrites item text without handing layout to AI', async () => {
+  const updates = [{ text: 'testing pending', status: 'pending', scope: 'general' }];
+  let prompt;
+  const result = await call({ reports, updates }, { AI: { run: async (model, options) => {
+    prompt = options.messages[0].content;
+    return { response: { updates: ['Testing remains pending.'] } };
+  } } });
+  assert.equal(result.status, 200);
+  assert.deepEqual((await result.json()).updates, ['Testing remains pending.']);
+  assert.match(prompt, /Do not add headings/);
+});
+
+test('custom-template mode rejects dropped or invalid AI updates', async () => {
+  const updates = [{ text: 'fixed login', status: 'completed' }];
+  const result = await call({ reports, updates }, { AI: { run: async () => ({response: {updates: []}}) } });
+  assert.equal(result.status, 502);
+  assert.equal((await call({ reports, updates: [{text: 'a', status: 'invalid'}] }, {AI: {}})).status, 400);
+});

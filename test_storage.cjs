@@ -140,3 +140,76 @@ test('late AI responses cannot replace notes changed during generation', async (
   assert.equal(vm.runInContext('draft().raw', fixture.context), 'new work added while generating');
   assert.match(fixture.element('ai-status').textContent, /changed while AI was working/);
 });
+
+test('separate overall and project templates substitute details and filter work', () => {
+  const fixture = app(response(404, 'text/html'));
+  const result = vm.runInContext(`(() => {
+    const settings = { ...defaults, sender: 'Nikhil', overall: 'Manager', project: 'Lead', projects: ['Portal'], templates: {
+      overall: { subject: 'Daily summary | {{date}}', body: 'Hello {{recipient}},\\n{{updates}}\\nRegards, {{sender}}' },
+      project: { subject: '{{projects}} update', body: 'Hi {{recipient}},\\nDone:\\n{{completed}}\\nOther:\\n{{work_updates}}\\nNext:\\n{{pending}}' }
+    }};
+    const updates = parseUpdates('Portal: fixed login\\nGeneral: reviewed docs\\nPortal: testing pending', settings.projects);
+    return { overall: reportFor('overall', updates, settings, '26 November 2026'), project: reportFor('project', updates, settings, '26 November 2026') };
+  })()`, fixture.context);
+  assert.equal(result.overall.subject, 'Daily summary | 26 November 2026');
+  assert.match(result.overall.message, /Hello Manager,/);
+  assert.match(result.overall.message, /Regards, Nikhil/);
+  assert.match(result.overall.message, /Reviewed docs/);
+  assert.equal(result.project.subject, 'Portal update');
+  assert.match(result.project.message, /Done:\n/);
+  assert.doesNotMatch(result.project.message, /Reviewed docs/);
+  assert.match(result.project.message, /Testing pending/);
+});
+
+test('template validation prevents missing work sections and unknown placeholders', () => {
+  const fixture = app(response(404, 'text/html'));
+  fixture.context.template = { subject: 'EOD {{date}}', body: '{{completed}}' };
+  assert.match(vm.runInContext('templateError(template)', fixture.context), /no work is omitted/);
+  fixture.context.template.body = '{{updates}} {{unknown}}';
+  assert.match(vm.runInContext('templateError(template)', fixture.context), /placeholders/);
+  fixture.context.template.body = '{{updates}}';
+  assert.equal(vm.runInContext('templateError(template)', fixture.context), '');
+});
+
+test('clear selected draft persists without clearing source, other report or saved history', async () => {
+  const fixture = app(response(404, 'text/html'));
+  await vm.runInContext('initialize()', fixture.context);
+  vm.runInContext(`
+    showReport = () => {};
+    draft().raw = 'Keep my notes';
+    draft().reports = { overall: {subject: 'Overall', message: 'Overall body'}, project: {subject: 'Project', message: 'Project body'} };
+    state.history[date] = {draft: structuredClone(draft())};
+  `, fixture.context);
+  await fixture.element('clear-report').handlers.click();
+  assert.equal(vm.runInContext('draft().reports.overall.message', fixture.context), '');
+  assert.equal(vm.runInContext('draft().reports.project.message', fixture.context), 'Project body');
+  assert.equal(vm.runInContext('draft().raw', fixture.context), 'Keep my notes');
+  assert.equal(vm.runInContext('state.history[date].draft.reports.overall.message', fixture.context), 'Overall body');
+  const stored = JSON.parse(fixture.saved.get('eod-reporting-desk-public-v1'));
+  assert.equal(Object.values(stored.drafts)[0].reports.overall.subject, '');
+});
+
+test('template-based AI generation keeps exact custom layout', async () => {
+  const fixture = app(response(404, 'text/html'));
+  await vm.runInContext('initialize()', fixture.context);
+  fixture.context.fetch = async () => response(200, 'application/json', { updates: ['Resolved the login issue.'] });
+  vm.runInContext(`
+    showUpdates = () => {}; showReport = () => {}; refreshActions = () => {};
+    state.settings.templates = {overall: {subject: 'Daily | {{date}}', body: 'CUSTOM OPENING\\n{{updates}}\\nCUSTOM CLOSING'}};
+    draft().raw = 'fixed login';
+  `, fixture.context);
+  await fixture.element('generate').handlers.click();
+  const result = vm.runInContext('draft()', fixture.context);
+  assert.equal(result.formatter, 'ai');
+  assert.match(result.reports.overall.message, /^CUSTOM OPENING\nCompleted Work/);
+  assert.match(result.reports.overall.message, /Resolved the login issue\./);
+  assert.match(result.reports.overall.message, /CUSTOM CLOSING$/);
+});
+
+test('saved templates survive reload and retention cleanup', async () => {
+  const stored = { settings: {sender: 'Test', templates: {overall: {subject: 'Custom', body: '{{updates}}'}}}, drafts: {}, history: {} };
+  const fixture = app(response(404, 'text/html'), stored);
+  await vm.runInContext('initialize()', fixture.context);
+  const saved = JSON.parse(fixture.saved.get('eod-reporting-desk-public-v1'));
+  assert.equal(saved.settings.templates.overall.subject, 'Custom');
+});

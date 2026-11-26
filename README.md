@@ -8,6 +8,16 @@ Paste your raw work notes and select **Generate EOD**. No profile setup or per-u
 
 When configured on Cloudflare, **Generate EOD** sends report drafts to Workers AI for grammar correction and professional rewriting. The prompt requires preserving facts, blockers, uncertainty, and completion status. Review generated wording before sharing. Reports remain editable. If AI is unavailable, times out, exceeds its free allowance, or returns invalid output, the original rule formatter provides a clearly labeled fallback. Requests do not overwrite edits made while AI is running.
 
+## Clear drafts and create templates
+
+In **Report drafts**, select Overall EOD or Project EOD, then **Clear draft** to empty only that report's subject and message. Source work updates, the other report, templates, and saved history remain intact. Generate again to rebuild a cleared report.
+
+Select **Templates** in the Report drafts header to create separate subject and message templates for Overall EOD and Project EOD. Save templates once, then Generate EOD to apply them. Each template has a **Use default** button; Cancel discards unsaved template edits. Settings changes preserve saved templates.
+
+Supported placeholders: `{{date}}`, `{{recipient}}`, `{{sender}}`, `{{projects}}`, `{{updates}}`, `{{completed}}`, `{{work_updates}}`, and `{{pending}}`. `{{updates}}` inserts all relevant work with status headings. Alternatively, include all three status placeholders under your own headings, so no work is lost. Project EOD includes only work assigned to configured projects. Templates are plain text; placeholder values are inserted once and are never interpreted as HTML or code.
+
+With saved templates, AI rewrites only individual work items; the app fills your template afterwards so your layout, subject structure, headings, and closing stay intact. AI failures use the same templates with basic formatting. Templates are stored with profile settings and do not expire after three days.
+
 ## Deploy to Cloudflare Pages with Workers AI
 
 1. Open Cloudflare **Workers & Pages**, create or select your **Pages** project, and connect GitHub repository `nikhilkunta0112/EOD_Project`.
