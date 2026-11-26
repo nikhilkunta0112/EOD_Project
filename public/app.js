@@ -9,6 +9,7 @@ let active = "overall";
 let noticeTimer;
 let writes = Promise.resolve();
 let storageMode = "browser";
+let generating = false;
 
 function persist() {
   pruneStoredDays();
@@ -227,10 +228,11 @@ function refreshActions() {
   refreshSummary(current.updates, total - missing);
   const countLabel = total + (total === 1 ? " update" : " updates");
   $("update-count").textContent = missing ? countLabel + " · " + missing + " to review" : countLabel;
-  $("generate").disabled = !current.raw.trim() && (!total || Boolean(missing));
+  $("generate").disabled = generating || (!current.raw.trim() && (!total || Boolean(missing)));
+  $("generate").setAttribute("aria-busy", String(generating));
   $("review").disabled = !current.raw.trim();
   $("stale").hidden = !isStale();
-  $("save").disabled = !current.reports || isStale() || !current.reports.overall.subject.trim() || !current.reports.overall.message.trim() ||
+  $("save").disabled = generating || !current.reports || isStale() || !current.reports.overall.subject.trim() || !current.reports.overall.message.trim() ||
     Boolean(current.reports.project && (!current.reports.project.subject.trim() || !current.reports.project.message.trim()));
   const report = current.reports?.[active];
   $("copy").disabled = !report?.subject.trim() || !report?.message.trim();
@@ -387,7 +389,8 @@ $("review").addEventListener("click", () => {
   first.querySelector(pendingField).focus();
 });
 
-$("generate").addEventListener("click", () => {
+$("generate").addEventListener("click", async () => {
+  if (generating) return;
   const current = draft();
   if (current.edited && !confirm("Replace your edited drafts with newly generated reports?")) return;
   if (current.raw.trim()) {
@@ -401,15 +404,50 @@ $("generate").addEventListener("click", () => {
     $("raw").value = "";
     showUpdates();
   }
-  current.reports = {
+  const reports = {
     overall: reportFor("overall", current.updates, state.settings, displayDate(date)),
     project: reportFor("project", current.updates, state.settings, displayDate(date))
   };
+  const sourceSignature = reportSignature();
+  const sourceDate = date;
+  const previousReports = JSON.stringify(current.reports);
+  generating = true;
+  refreshActions();
+  persist();
+  $("ai-status").textContent = "Professionally rewriting your EOD with Cloudflare AI...";
+  let rewritten;
+  let failure = "";
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45000);
+  try {
+    const response = await fetch("/api/reformat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reports }), signal: controller.signal
+    });
+    if (!response.ok || !response.headers.get("Content-Type")?.includes("application/json")) throw new Error("AI unavailable");
+    const result = await response.json();
+    const valid = report => report && typeof report.subject === "string" && report.subject.trim() && typeof report.message === "string" && report.message.trim();
+    if (!valid(result.reports?.overall) || (reports.project && !valid(result.reports?.project))) throw new Error("Invalid AI output");
+    rewritten = result.reports;
+  } catch {
+    failure = "AI unavailable or not configured. Basic formatting was used; try generating again later.";
+  } finally {
+    clearTimeout(timeout);
+    generating = false;
+  }
+  if (date !== sourceDate || reportSignature() !== sourceSignature || JSON.stringify(current.reports) !== previousReports) {
+    $("ai-status").textContent = "Your notes or report changed while AI was working. Generate again to use the latest version.";
+    refreshActions();
+    return;
+  }
+  current.reports = rewritten || reports;
   current.edited = false;
-  current.signature = reportSignature();
+  current.signature = sourceSignature;
+  current.formatter = rewritten ? "ai" : "basic";
   persist();
   showReport();
-  notify(current.reports.project ? "Both reports are ready." : "Overall report is ready. No project updates were assigned.");
+  $("ai-status").textContent = failure || "Rewritten with Cloudflare AI. Review the wording before copying.";
+  notify(failure || "Your professional EOD is ready.");
 });
 
 for (const field of ["subject", "message"]) {

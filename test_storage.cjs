@@ -15,7 +15,7 @@ function app(response, previous) {
     document: { getElementById: element, querySelector: () => element('main') },
     localStorage: { getItem: key => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value), removeItem: key => saved.delete(key) },
     fetch: async (url, options) => { calls.push({ url, options }); return options ? { ok: true } : response; },
-    setTimeout() {}, clearTimeout() {}, setInterval() {}, structuredClone,
+    setTimeout() {}, clearTimeout() {}, setInterval() {}, structuredClone, AbortController,
   });
   vm.runInContext(fs.readFileSync('public/defaults.js', 'utf8'), context);
   vm.runInContext(fs.readFileSync('public/app.js', 'utf8').replace(/initialize\(\);\s*$/, ''), context);
@@ -90,14 +90,53 @@ test('generate button consumes raw notes without requiring review or profile', a
   const fixture = app(response(404, 'text/html'));
   await vm.runInContext('initialize()', fixture.context);
   vm.runInContext(`
-    showUpdates = () => {}; showReport = () => {};
+    showUpdates = () => {}; showReport = () => {}; refreshActions = () => {};
     draft().raw = 'fixed the login issue. Testing is pending';
   `, fixture.context);
-  fixture.element('generate').handlers.click();
+  await fixture.element('generate').handlers.click();
   const result = vm.runInContext('draft()', fixture.context);
   assert.equal(result.raw, '');
   assert.equal(result.updates.length, 2);
   assert.match(result.reports.overall.message, /Hi Team,/);
   assert.match(result.reports.overall.message, /Testing is pending\./);
   assert.equal(result.reports.project, null);
+});
+
+test('AI rewritten EOD is applied and saved in browser history state', async () => {
+  const fixture = app(response(404, 'text/html'));
+  await vm.runInContext('initialize()', fixture.context);
+  fixture.context.fetch = async () => response(200, 'application/json', { reports: {
+    overall: { recipient: 'Team', subject: 'Polished EOD', message: 'Hi Team,\nResolved the login issue.\nBest regards,' }, project: null
+  } });
+  vm.runInContext(`showUpdates = () => {}; showReport = () => {}; refreshActions = () => {}; draft().raw = 'fixed login';`, fixture.context);
+  await fixture.element('generate').handlers.click();
+  const result = vm.runInContext('draft()', fixture.context);
+  assert.equal(result.formatter, 'ai');
+  assert.equal(result.reports.overall.subject, 'Polished EOD');
+  assert.match(fixture.element('ai-status').textContent, /Rewritten with Cloudflare/);
+});
+
+test('AI failure clearly labels basic fallback', async () => {
+  const fixture = app(response(404, 'text/html'));
+  await vm.runInContext('initialize()', fixture.context);
+  fixture.context.fetch = async () => response(503, 'application/json');
+  vm.runInContext(`showUpdates = () => {}; showReport = () => {}; refreshActions = () => {}; draft().raw = 'fixed login';`, fixture.context);
+  await fixture.element('generate').handlers.click();
+  assert.equal(vm.runInContext('draft().formatter', fixture.context), 'basic');
+  assert.match(fixture.element('ai-status').textContent, /Basic formatting was used/);
+});
+
+test('late AI responses cannot replace notes changed during generation', async () => {
+  const fixture = app(response(404, 'text/html'));
+  await vm.runInContext('initialize()', fixture.context);
+  let finish;
+  fixture.context.fetch = () => new Promise(resolve => { finish = resolve; });
+  vm.runInContext(`showUpdates = () => {}; showReport = () => {}; refreshActions = () => {}; draft().raw = 'fixed login';`, fixture.context);
+  const pending = fixture.element('generate').handlers.click();
+  vm.runInContext(`draft().raw = 'new work added while generating';`, fixture.context);
+  finish(response(200, 'application/json', { reports: { overall: { subject: 'Old response', message: 'Old work' }, project: null } }));
+  await pending;
+  assert.equal(vm.runInContext('draft().reports', fixture.context), undefined);
+  assert.equal(vm.runInContext('draft().raw', fixture.context), 'new work added while generating');
+  assert.match(fixture.element('ai-status').textContent, /changed while AI was working/);
 });

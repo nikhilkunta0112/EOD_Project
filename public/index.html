@@ -88,12 +88,13 @@
               <label class="input-label" for="subject">Subject</label><input id="subject" type="text">
               <label class="input-label" for="message">Message</label><textarea id="message" rows="13"></textarea>
             </div>
+            <p id="ai-status" class="tips" role="status">AI rewriting is used when available; basic formatting remains available as a fallback.</p>
             <p id="stale" class="stale" hidden>Source updates or settings changed. Generate again to refresh the drafts.</p>
           </div>
           <footer class="card-foot report-actions"><button class="btn secondary" id="copy" disabled><svg aria-hidden="true" focusable="false"><use href="#copy-icon"/></svg>Copy report</button><button class="btn save" id="save" disabled><svg aria-hidden="true" focusable="false"><use href="#save-icon"/></svg>Save to history</button></footer>
         </section>
       </div>
-      <p class="bottom-note">Reports use only the work updates you enter.</p>
+      <p class="bottom-note">Generate sends your work notes to Cloudflare Workers AI for professional rewriting. Review the result before sending.</p>
     </section>
     <section id="history" hidden>
       <header class="page-heading"><div><h1>Report history</h1><p>Open a saved day to review, edit, or copy its reports.</p></div><button class="btn primary" id="today">Todayâ€™s report</button></header>
